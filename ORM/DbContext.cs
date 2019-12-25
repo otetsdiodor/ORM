@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Collections;
 using System.Data.SqlClient;
 using System.Text;
 
@@ -322,7 +323,13 @@ namespace ORM
                     var smt = getList(idValue, searchRes, type);
                     //var smt = new List<Person>();
 
-                    tmpList.Add(null);
+                    Type listType = typeof(List<>).MakeGenericType(new Type[] { type });
+                    var listInstance = (IList)Activator.CreateInstance(listType);
+                    foreach (var item in smt)
+                    {
+                        listInstance.Add(item);
+                    }
+                    tmpList.Add(listInstance);
                     return Activator.CreateInstance(t, tmpList.ToArray());
                 }
                 return null;
