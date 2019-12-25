@@ -10,7 +10,8 @@ namespace ORM
     public class DbContext
     {
         public Dictionary<string, string> MatchedTypes = new Dictionary<string, string>();
-        const string str = "Data Source=SHLONOV;Initial Catalog=TestBD;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
+        //const string str = "Data Source=SHLONOV;Initial Catalog=TestBD;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
+        const string str = "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=TestDB;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
         public DbContext()
         {
             FillMathchedTypes();
@@ -156,9 +157,6 @@ namespace ORM
         }
         public object GetById(Type t, string id)
         {
-            if (IsOneToMany(t))
-            {
-            }
             using (var connection = new SqlConnection(str))
             {
                 Dictionary<string, string> dictionary = GetTableInfo(t.Name);
@@ -208,41 +206,139 @@ namespace ORM
 
         public object get(string Id, Type t)
         {
-            var model = new { TName = "", PKey = "" };
-            //model = GetModel(t);
-            var PropNames = GetPropNamesList(t.FullName);
-            var constructorParams = new List<object>();
-            using (var conn = new SqlConnection(str))
+            using (var connection = new SqlConnection(str))
             {
-                conn.Open();
-                var comText = $"SELECT * FROM {model.TName} WHERE {model.PKey} = '{Id}'";
-                var reader = new SqlCommand(comText, conn).ExecuteReader();
-                if (reader.HasRows)
+                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+                var filedIdname = GetIdNameField(t);
+                connection.Open();
+                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, Id);
+                var command = new SqlCommand(commandText, connection);
+                var reader = command.ExecuteReader();
+
+                while (reader.Read())
                 {
-                    foreach (var item in PropNames)
+                    var tmpList = new List<object>();
+                    foreach (var item in dictionary)
                     {
-                        constructorParams.Add(reader[item]);
+                        tmpList.Add(reader[item.Key]);
                     }
-                    return Activator.CreateInstance(t, constructorParams.ToArray());
+                    return Activator.CreateInstance(t, tmpList.ToArray());
+                }
+                return null;
+            }
+        }
+        public List<object> getList(string Id,string IdName, Type t)
+        {
+            using (var connection = new SqlConnection(str))
+            {
+                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+                //var filedIdname = GetIdNameField(t);
+                connection.Open();
+                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, IdName, Id);
+                var command = new SqlCommand(commandText, connection);
+                var reader = command.ExecuteReader();
+
+                List<object> result = new List<object>();
+
+                while (reader.Read())
+                {
+                    var tmpList = new List<object>();
+                    foreach (var item in dictionary)
+                    {
+                        tmpList.Add(reader[item.Key]);
+                    }
+                    tmpList.Add(null);
+                    result.Add(Activator.CreateInstance(t, tmpList.ToArray()));
+                }
+                return result;
+            }
+        }
+
+        public object getOntToOne(string id,Type t)
+        {
+            using (var connection = new SqlConnection(str))
+            {
+                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+                var filedIdname = GetIdNameField(t);
+                connection.Open();
+                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, id);
+                var command = new SqlCommand(commandText, connection);
+                var reader = command.ExecuteReader();
+                var foreignKeys = GetForeighKeysList(t.Name); // added
+
+                while (reader.Read())
+                {
+                    var tmpList = new List<object>();
+                    foreach (var item in dictionary)
+                    {
+                        tmpList.Add(reader[item.Key]);
+                        if (foreignKeys.Contains(item.Key))
+                        {
+                            Type type = AppDomain.CurrentDomain.GetAssemblies()
+                                .SelectMany(x => x.GetTypes())
+                                .FirstOrDefault(x => x.Name == item.Key.Replace("Id", ""));
+                            object o = get(tmpList.LastOrDefault().ToString(), type);
+                            tmpList.Add(o);
+                        }
+                    }
+                    return Activator.CreateInstance(t, tmpList.ToArray());
+                }
+                return null;
+            }
+        }
+
+        public object getOneToMany(string id, Type t)
+        {
+            using (var connection = new SqlConnection(str))
+            {
+                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+                var filedIdname = GetIdNameField(t);
+                connection.Open();
+                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, id);
+                var command = new SqlCommand(commandText, connection);
+                var reader = command.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    var tmpList = new List<object>();
+                    foreach (var item in dictionary)
+                    {
+                        tmpList.Add(reader[item.Key]);                        
+                    }
+                    var typeName = GetTypeOneToMany(t);
+                    Type type = AppDomain.CurrentDomain.GetAssemblies()
+                                .SelectMany(x => x.GetTypes())
+                                .FirstOrDefault(x => x.Name == typeName);
+                    var idValue = tmpList.FirstOrDefault().ToString();
+                    var foreighkeys = GetForeighKeysList(typeName);
+                    var searchRes = "";
+                    foreach (var item in foreighkeys)
+                    {
+                        if (item.Contains(t.Name))
+                        {
+                            searchRes = item;
+                        }
+                    }
+                    var smt = getList(idValue, searchRes, type);
+                    //var smt = new List<Person>();
+
+                    tmpList.Add(null);
+                    return Activator.CreateInstance(t, tmpList.ToArray());
+                }
+                return null;
+            }
+        }
+
+        private string GetTypeOneToMany(Type t)
+        {
+            foreach (var item in t.GetProperties())
+            {
+                if (item.PropertyType.FullName.Contains("List"))
+                {
+                    return item.PropertyType.GenericTypeArguments.First().Name;
                 }
             }
             return null;
-        }
-
-        //private  GetModel(Type t)
-        //{
-        //    GetIdNameField(t);
-        //    return new { TName = t.Name, PKey = GetIdNameField(t) };
-        //}
-        private List<string> GetPropNamesList(string type)
-        {
-            var cols = new List<string>();
-            var t = Type.GetType(type);
-            foreach (var item in t.GetProperties())
-            {
-                cols.Add(item.Name);
-            }
-            return cols;
         }
 
 
