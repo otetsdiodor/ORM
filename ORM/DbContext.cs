@@ -213,17 +213,16 @@ namespace ORM
                 var filedIdname = GetIdNameField(t);
                 connection.Open();
                 var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, Id);
-                var command = new SqlCommand(commandText, connection);
-                var reader = command.ExecuteReader();
+                var reader = new SqlCommand(commandText, connection).ExecuteReader();
 
                 while (reader.Read())
                 {
-                    var tmpList = new List<object>();
-                    foreach (var item in dictionary)
+                    var resultList = new List<object>();
+                    foreach (var ColumnName in dictionary)
                     {
-                        tmpList.Add(reader[item.Key]);
+                        resultList.Add(reader[ColumnName.Key]);
                     }
-                    return Activator.CreateInstance(t, tmpList.ToArray());
+                    return Activator.CreateInstance(t, resultList.ToArray());
                 }
                 return null;
             }
@@ -233,7 +232,6 @@ namespace ORM
             using (var connection = new SqlConnection(str))
             {
                 Dictionary<string, string> dictionary = GetTableInfo(t.Name);
-                //var filedIdname = GetIdNameField(t);
                 connection.Open();
                 var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, IdName, Id);
                 var command = new SqlCommand(commandText, connection);
@@ -306,46 +304,49 @@ namespace ORM
                     {
                         tmpList.Add(reader[item.Key]);                        
                     }
-                    var typeName = GetTypeOneToMany(t);
-                    Type type = AppDomain.CurrentDomain.GetAssemblies()
+                    var typeNames = GetTypeOneToMany(t);
+                    foreach (var name in typeNames)
+                    {
+                        Type type = AppDomain.CurrentDomain.GetAssemblies()
                                 .SelectMany(x => x.GetTypes())
-                                .FirstOrDefault(x => x.Name == typeName);
-                    var idValue = tmpList.FirstOrDefault().ToString();
-                    var foreighkeys = GetForeighKeysList(typeName);
-                    var searchRes = "";
-                    foreach (var item in foreighkeys)
-                    {
-                        if (item.Contains(t.Name))
+                                .FirstOrDefault(x => x.Name == name);
+                        var idValue = tmpList.FirstOrDefault().ToString();
+                        var foreighkeys = GetForeighKeysList(name);
+                        var searchRes = "";
+                        foreach (var item in foreighkeys)
                         {
-                            searchRes = item;
+                            if (item.Contains(t.Name))
+                            {
+                                searchRes = item;
+                            }
                         }
-                    }
-                    var smt = getList(idValue, searchRes, type);
-                    //var smt = new List<Person>();
+                        var smt = getList(idValue, searchRes, type);
 
-                    Type listType = typeof(List<>).MakeGenericType(new Type[] { type });
-                    var listInstance = (IList)Activator.CreateInstance(listType);
-                    foreach (var item in smt)
-                    {
-                        listInstance.Add(item);
+                        Type listType = typeof(List<>).MakeGenericType(new Type[] { type });
+                        var listInstance = (IList)Activator.CreateInstance(listType);
+                        foreach (var item in smt)
+                        {
+                            listInstance.Add(item);
+                        }
+                        tmpList.Add(listInstance);
                     }
-                    tmpList.Add(listInstance);
                     return Activator.CreateInstance(t, tmpList.ToArray());
                 }
                 return null;
             }
         }
 
-        private string GetTypeOneToMany(Type t)
+        private List<string> GetTypeOneToMany(Type t)
         {
+            var result = new List<string>();
             foreach (var item in t.GetProperties())
             {
                 if (item.PropertyType.FullName.Contains("List"))
                 {
-                    return item.PropertyType.GenericTypeArguments.First().Name;
+                    result.Add(item.PropertyType.GenericTypeArguments.First().Name);
                 }
             }
-            return null;
+            return result;
         }
 
 
