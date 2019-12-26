@@ -13,6 +13,7 @@ namespace ORM
             var rep = new Repository<Person>();
 
             var tmp3 = rep.GetById("5");
+            var tmp = rep.GetTs();
         }
     }
 }

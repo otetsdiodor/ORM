@@ -125,8 +125,8 @@ namespace ORM
             MatchedTypes.Add("date", "System.DateTime");
             MatchedTypes.Add("time", "System.TimeSpan");
         }
-        
-        //public IEnumerable<object> GetT(string TableName,Type t)
+
+        //public IEnumerable<object> GetT(string TableName, Type t)
         //{
         //    using (var connection = new SqlConnection(str))
         //    {
@@ -159,6 +159,68 @@ namespace ORM
         //        return result;
         //    }
         //}
+        public List<object> Get(Type t)
+        {
+            using (var connection = new SqlConnection(str))
+            {
+                var resultList = new List<object>();
+                LoadedTypes.Add(t.Name);
+                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+                //var filedIdname = GetIdNameField(t);
+                connection.Open();
+                var commandText = string.Format("SELECT * FROM {0};", t.Name); // 
+                var command = new SqlCommand(commandText, connection);
+                var reader = command.ExecuteReader();
+                var forlist = GetForeighKeysList(t.Name);
+
+                while (reader.Read())
+                {
+                    var tmpList = new List<object>();
+                    foreach (var item in dictionary)
+                    {
+                        tmpList.Add(reader[item.Key]);
+                        if (forlist.Contains(item.Key))
+                        {
+                            Type type = AppDomain.CurrentDomain.GetAssemblies()
+                                .SelectMany(x => x.GetTypes())
+                                .FirstOrDefault(x => x.Name == item.Key.Replace("Id", ""));
+                            object o = GetById(type, tmpList.LastOrDefault().ToString());
+                            var index = tmpList.IndexOf(forlist[0]);
+                            tmpList.Add(o);
+                        }
+                    }
+                    var oneToManyTypes = GetTypeOneToMany(t);
+                    foreach (var TypeName in oneToManyTypes)
+                    {
+                        Type type = AppDomain.CurrentDomain.GetAssemblies()
+                                .SelectMany(x => x.GetTypes())
+                                .FirstOrDefault(x => x.Name == TypeName);
+                        var idValue = tmpList.FirstOrDefault().ToString();
+                        var foreighkeys = GetForeighKeysList(TypeName);
+                        var searchRes = "";
+                        foreach (var item in foreighkeys)
+                        {
+                            if (item.Contains(t.Name))
+                            {
+                                searchRes = item;
+                            }
+                        }
+                        var smt = getList(idValue, searchRes, type);
+
+                        Type listType = typeof(List<>).MakeGenericType(new Type[] { type });
+                        var listInstance = (IList)Activator.CreateInstance(listType);
+                        foreach (var item in smt)
+                        {
+                            listInstance.Add(item);
+                        }
+                        tmpList.Add(listInstance);
+                    }
+                    resultList.Add(Activator.CreateInstance(t, tmpList.ToArray()));
+                }
+                return resultList;
+            }
+        }
+
         public object GetById(Type t, string id)
         {
             using (var connection = new SqlConnection(str))
@@ -221,42 +283,6 @@ namespace ORM
             }
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        //public object get(string Id, Type t)
-        //{
-        //    using (var connection = new SqlConnection(str))
-        //    {
-        //        Dictionary<string, string> dictionary = GetTableInfo(t.Name);
-        //        var filedIdname = GetIdNameField(t);
-        //        connection.Open();
-        //        var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, Id);
-        //        var reader = new SqlCommand(commandText, connection).ExecuteReader();
-
-        //        while (reader.Read())
-        //        {
-        //            var resultList = new List<object>();
-        //            foreach (var ColumnName in dictionary)
-        //            {
-        //                resultList.Add(reader[ColumnName.Key]);
-        //            }
-        //            return Activator.CreateInstance(t, resultList.ToArray());
-        //        }
-        //        return null;
-        //    }
-        //}
         public List<object> getList(string Id,string IdName, Type t)
         {
             using (var connection = new SqlConnection(str))
@@ -297,89 +323,6 @@ namespace ORM
             }
         }
 
-        //public object getOntToOne(string id,Type t)
-        //{
-        //    using (var connection = new SqlConnection(str))
-        //    {
-        //        Dictionary<string, string> dictionary = GetTableInfo(t.Name);
-        //        var filedIdname = GetIdNameField(t);
-        //        connection.Open();
-        //        var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, id);
-        //        var command = new SqlCommand(commandText, connection);
-        //        var reader = command.ExecuteReader();
-        //        var foreignKeys = GetForeighKeysList(t.Name); // added
-
-        //        while (reader.Read())
-        //        {
-        //            var tmpList = new List<object>();
-        //            foreach (var item in dictionary)
-        //            {
-        //                tmpList.Add(reader[item.Key]);
-        //                if (foreignKeys.Contains(item.Key))
-        //                {
-        //                    Type type = AppDomain.CurrentDomain.GetAssemblies()
-        //                        .SelectMany(x => x.GetTypes())
-        //                        .FirstOrDefault(x => x.Name == item.Key.Replace("Id", ""));
-        //                    object o = get(tmpList.LastOrDefault().ToString(), type);
-        //                    tmpList.Add(o);
-        //                }
-        //            }
-        //            return Activator.CreateInstance(t, tmpList.ToArray());
-        //        }
-        //        return null;
-        //    }
-        //}
-
-        //public object getOneToMany(string id, Type t)
-        //{
-        //    using (var connection = new SqlConnection(str))
-        //    {
-        //        Dictionary<string, string> dictionary = GetTableInfo(t.Name);
-        //        var filedIdname = GetIdNameField(t);
-        //        connection.Open();
-        //        var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, id);
-        //        var command = new SqlCommand(commandText, connection);
-        //        var reader = command.ExecuteReader();
-
-        //        while (reader.Read())
-        //        {
-        //            var tmpList = new List<object>();
-        //            foreach (var item in dictionary)
-        //            {
-        //                tmpList.Add(reader[item.Key]);                        
-        //            }
-        //            var typeNames = GetTypeOneToMany(t);
-        //            foreach (var name in typeNames)
-        //            {
-        //                Type type = AppDomain.CurrentDomain.GetAssemblies()
-        //                        .SelectMany(x => x.GetTypes())
-        //                        .FirstOrDefault(x => x.Name == name);
-        //                var idValue = tmpList.FirstOrDefault().ToString();
-        //                var foreighkeys = GetForeighKeysList(name);
-        //                var searchRes = "";
-        //                foreach (var item in foreighkeys)
-        //                {
-        //                    if (item.Contains(t.Name))
-        //                    {
-        //                        searchRes = item;
-        //                    }
-        //                }
-        //                var smt = getList(idValue, searchRes, type);
-
-        //                Type listType = typeof(List<>).MakeGenericType(new Type[] { type });
-        //                var listInstance = (IList)Activator.CreateInstance(listType);
-        //                foreach (var item in smt)
-        //                {
-        //                    listInstance.Add(item);
-        //                }
-        //                tmpList.Add(listInstance);
-        //            }
-        //            return Activator.CreateInstance(t, tmpList.ToArray());
-        //        }
-        //        return null;
-        //    }
-        //}
-
         private List<string> GetTypeOneToMany(Type t)
         {
             var result = new List<string>();
@@ -393,69 +336,7 @@ namespace ORM
             return result;
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        private bool IsOneToMany(Type t)
-        {
-            foreach (var item in t.GetProperties())
-            {
-                var interf = item.PropertyType.GetInterfaces();
-                foreach (var i2 in interf)
-                {
-                    if (i2.Name.Contains("List")/* == typeof(IEnumerable<T>).Name*/)
-                    {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-        private string GetIdNameField(Type t)
+        public string GetIdNameField(Type t)
         {
             var tmp = GetTypeInfo(t.FullName);
             foreach (var item in tmp)
@@ -467,10 +348,9 @@ namespace ORM
             }
             return null;
         }
-        public void Update<T>(T t)
+        public void Update(Type t)
         {
-            var type = typeof(T);
-            var typeInfo = GetTypeInfo(type.FullName);
+            var typeInfo = GetTypeInfo(t.FullName);
             var setString = "SET ";
             var count = 0;
             var PropValuesList = TypeValues(t);
@@ -481,7 +361,7 @@ namespace ORM
                 count++;
             }
             setString = setString.Remove(setString.Length - 2);
-            var commandText = string.Format("UPDATE {0} {1} WHERE {2} = '{3}'",type.Name,setString, GetIdNameField(typeof(T)), PropValuesList[GetIdNameField(typeof(T))]);
+            var commandText = string.Format("UPDATE {0} {1} WHERE {2} = '{3}'",t.Name,setString, GetIdNameField(t), PropValuesList[GetIdNameField(t)]);
             using (var connection = new SqlConnection(str))
             {
                 connection.Open();
