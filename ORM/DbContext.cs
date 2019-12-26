@@ -11,8 +11,11 @@ namespace ORM
     public class DbContext
     {
         public Dictionary<string, string> MatchedTypes = new Dictionary<string, string>();
-        //const string str = "Data Source=SHLONOV;Initial Catalog=TestBD;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
-        const string str = "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=TestDB;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
+        const string str = "Data Source=SHLONOV;Initial Catalog=TestBD;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
+        //const string str = "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=TestDB;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False";
+        List<string> LoadedTypes = new List<string>();
+
+
         public DbContext()
         {
             FillMathchedTypes();
@@ -123,43 +126,44 @@ namespace ORM
             MatchedTypes.Add("time", "System.TimeSpan");
         }
         
-        public IEnumerable<object> GetT(string TableName,Type t)
-        {
-            using (var connection = new SqlConnection(str))
-            {
-                connection.Open();
-                Dictionary<string, string> dictionary = GetTableInfo(TableName);
-                List<object> result = new List<object>();
-                var commandText = string.Format("SELECT * FROM {0};", TableName);
-                var command = new SqlCommand(commandText, connection);
-                var reader = command.ExecuteReader();
-                var forlist = GetForeighKeysList(TableName);
-                while (reader.Read())
-                {
-                    var tmpList = new List<object>();
-                    foreach (var item in dictionary)
-                    {
-                        tmpList.Add(reader[item.Key]);
-                        if (forlist.Contains(item.Key))
-                        {
-                            Type type = AppDomain.CurrentDomain.GetAssemblies()
-                                .SelectMany(x => x.GetTypes())
-                                .FirstOrDefault(x => x.Name == item.Key.Replace("Id", ""));
-                            object o = GetById(type, tmpList.LastOrDefault().ToString());
-                            var index = tmpList.IndexOf(forlist[0]);
-                            tmpList.Add(o);
-                        }
-                    }
-                    var tmp = Activator.CreateInstance(t, tmpList.ToArray());
-                    result.Add(tmp);
-                }
-                return result;
-            }
-        }
+        //public IEnumerable<object> GetT(string TableName,Type t)
+        //{
+        //    using (var connection = new SqlConnection(str))
+        //    {
+        //        connection.Open();
+        //        Dictionary<string, string> dictionary = GetTableInfo(TableName);
+        //        List<object> result = new List<object>();
+        //        var commandText = string.Format("SELECT * FROM {0};", TableName);
+        //        var command = new SqlCommand(commandText, connection);
+        //        var reader = command.ExecuteReader();
+        //        var forlist = GetForeighKeysList(TableName);
+        //        while (reader.Read())
+        //        {
+        //            var tmpList = new List<object>();
+        //            foreach (var item in dictionary)
+        //            {
+        //                tmpList.Add(reader[item.Key]);
+        //                if (forlist.Contains(item.Key))
+        //                {
+        //                    Type type = AppDomain.CurrentDomain.GetAssemblies()
+        //                        .SelectMany(x => x.GetTypes())
+        //                        .FirstOrDefault(x => x.Name == item.Key.Replace("Id", ""));
+        //                    object o = GetById(type, tmpList.LastOrDefault().ToString());
+        //                    var index = tmpList.IndexOf(forlist[0]);
+        //                    tmpList.Add(o);
+        //                }
+        //            }
+        //            var tmp = Activator.CreateInstance(t, tmpList.ToArray());
+        //            result.Add(tmp);
+        //        }
+        //        return result;
+        //    }
+        //}
         public object GetById(Type t, string id)
         {
             using (var connection = new SqlConnection(str))
             {
+                LoadedTypes.Add(t.Name);
                 Dictionary<string, string> dictionary = GetTableInfo(t.Name);
                 var filedIdname = GetIdNameField(t);
                 connection.Open();
@@ -184,6 +188,32 @@ namespace ORM
                             tmpList.Add(o);
                         }
                     }
+                    var oneToManyTypes = GetTypeOneToMany(t);
+                    foreach (var TypeName in oneToManyTypes)
+                    {
+                        Type type = AppDomain.CurrentDomain.GetAssemblies()
+                                .SelectMany(x => x.GetTypes())
+                                .FirstOrDefault(x => x.Name == TypeName);
+                        var idValue = tmpList.FirstOrDefault().ToString();
+                        var foreighkeys = GetForeighKeysList(TypeName);
+                        var searchRes = "";
+                        foreach (var item in foreighkeys)
+                        {
+                            if (item.Contains(t.Name))
+                            {
+                                searchRes = item;
+                            }
+                        }
+                        var smt = getList(idValue, searchRes, type);
+
+                        Type listType = typeof(List<>).MakeGenericType(new Type[] { type });
+                        var listInstance = (IList)Activator.CreateInstance(listType);
+                        foreach (var item in smt)
+                        {
+                            listInstance.Add(item);
+                        }
+                        tmpList.Add(listInstance);
+                    }
                     var tmp = Activator.CreateInstance(t, tmpList.ToArray());
                     return tmp;
                 }
@@ -205,28 +235,28 @@ namespace ORM
 
 
 
-        public object get(string Id, Type t)
-        {
-            using (var connection = new SqlConnection(str))
-            {
-                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
-                var filedIdname = GetIdNameField(t);
-                connection.Open();
-                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, Id);
-                var reader = new SqlCommand(commandText, connection).ExecuteReader();
+        //public object get(string Id, Type t)
+        //{
+        //    using (var connection = new SqlConnection(str))
+        //    {
+        //        Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+        //        var filedIdname = GetIdNameField(t);
+        //        connection.Open();
+        //        var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, Id);
+        //        var reader = new SqlCommand(commandText, connection).ExecuteReader();
 
-                while (reader.Read())
-                {
-                    var resultList = new List<object>();
-                    foreach (var ColumnName in dictionary)
-                    {
-                        resultList.Add(reader[ColumnName.Key]);
-                    }
-                    return Activator.CreateInstance(t, resultList.ToArray());
-                }
-                return null;
-            }
-        }
+        //        while (reader.Read())
+        //        {
+        //            var resultList = new List<object>();
+        //            foreach (var ColumnName in dictionary)
+        //            {
+        //                resultList.Add(reader[ColumnName.Key]);
+        //            }
+        //            return Activator.CreateInstance(t, resultList.ToArray());
+        //        }
+        //        return null;
+        //    }
+        //}
         public List<object> getList(string Id,string IdName, Type t)
         {
             using (var connection = new SqlConnection(str))
@@ -236,34 +266,8 @@ namespace ORM
                 var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, IdName, Id);
                 var command = new SqlCommand(commandText, connection);
                 var reader = command.ExecuteReader();
-
-                List<object> result = new List<object>();
-
-                while (reader.Read())
-                {
-                    var tmpList = new List<object>();
-                    foreach (var item in dictionary)
-                    {
-                        tmpList.Add(reader[item.Key]);
-                    }
-                    tmpList.Add(null);
-                    result.Add(Activator.CreateInstance(t, tmpList.ToArray()));
-                }
-                return result;
-            }
-        }
-
-        public object getOntToOne(string id,Type t)
-        {
-            using (var connection = new SqlConnection(str))
-            {
-                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
-                var filedIdname = GetIdNameField(t);
-                connection.Open();
-                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, id);
-                var command = new SqlCommand(commandText, connection);
-                var reader = command.ExecuteReader();
                 var foreignKeys = GetForeighKeysList(t.Name); // added
+                List<object> result = new List<object>();
 
                 while (reader.Read())
                 {
@@ -273,68 +277,108 @@ namespace ORM
                         tmpList.Add(reader[item.Key]);
                         if (foreignKeys.Contains(item.Key))
                         {
-                            Type type = AppDomain.CurrentDomain.GetAssemblies()
-                                .SelectMany(x => x.GetTypes())
-                                .FirstOrDefault(x => x.Name == item.Key.Replace("Id", ""));
-                            object o = get(tmpList.LastOrDefault().ToString(), type);
-                            tmpList.Add(o);
-                        }
-                    }
-                    return Activator.CreateInstance(t, tmpList.ToArray());
-                }
-                return null;
-            }
-        }
-
-        public object getOneToMany(string id, Type t)
-        {
-            using (var connection = new SqlConnection(str))
-            {
-                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
-                var filedIdname = GetIdNameField(t);
-                connection.Open();
-                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, id);
-                var command = new SqlCommand(commandText, connection);
-                var reader = command.ExecuteReader();
-
-                while (reader.Read())
-                {
-                    var tmpList = new List<object>();
-                    foreach (var item in dictionary)
-                    {
-                        tmpList.Add(reader[item.Key]);                        
-                    }
-                    var typeNames = GetTypeOneToMany(t);
-                    foreach (var name in typeNames)
-                    {
-                        Type type = AppDomain.CurrentDomain.GetAssemblies()
-                                .SelectMany(x => x.GetTypes())
-                                .FirstOrDefault(x => x.Name == name);
-                        var idValue = tmpList.FirstOrDefault().ToString();
-                        var foreighkeys = GetForeighKeysList(name);
-                        var searchRes = "";
-                        foreach (var item in foreighkeys)
-                        {
-                            if (item.Contains(t.Name))
+                            if (LoadedTypes.Contains(item.Key.Replace("Id", "")))
                             {
-                                searchRes = item;
+                                tmpList.Add(null);
+                            }
+                            else
+                            {
+                                Type type = AppDomain.CurrentDomain.GetAssemblies()
+                                    .SelectMany(x => x.GetTypes())
+                                    .FirstOrDefault(x => x.Name == item.Key.Replace("Id", ""));
+                                object o = GetById(type, tmpList.LastOrDefault().ToString());
+                                tmpList.Add(o);
                             }
                         }
-                        var smt = getList(idValue, searchRes, type);
-
-                        Type listType = typeof(List<>).MakeGenericType(new Type[] { type });
-                        var listInstance = (IList)Activator.CreateInstance(listType);
-                        foreach (var item in smt)
-                        {
-                            listInstance.Add(item);
-                        }
-                        tmpList.Add(listInstance);
                     }
-                    return Activator.CreateInstance(t, tmpList.ToArray());
+                    result.Add(Activator.CreateInstance(t, tmpList.ToArray()));
                 }
-                return null;
+                return result;
             }
         }
+
+        //public object getOntToOne(string id,Type t)
+        //{
+        //    using (var connection = new SqlConnection(str))
+        //    {
+        //        Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+        //        var filedIdname = GetIdNameField(t);
+        //        connection.Open();
+        //        var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, id);
+        //        var command = new SqlCommand(commandText, connection);
+        //        var reader = command.ExecuteReader();
+        //        var foreignKeys = GetForeighKeysList(t.Name); // added
+
+        //        while (reader.Read())
+        //        {
+        //            var tmpList = new List<object>();
+        //            foreach (var item in dictionary)
+        //            {
+        //                tmpList.Add(reader[item.Key]);
+        //                if (foreignKeys.Contains(item.Key))
+        //                {
+        //                    Type type = AppDomain.CurrentDomain.GetAssemblies()
+        //                        .SelectMany(x => x.GetTypes())
+        //                        .FirstOrDefault(x => x.Name == item.Key.Replace("Id", ""));
+        //                    object o = get(tmpList.LastOrDefault().ToString(), type);
+        //                    tmpList.Add(o);
+        //                }
+        //            }
+        //            return Activator.CreateInstance(t, tmpList.ToArray());
+        //        }
+        //        return null;
+        //    }
+        //}
+
+        //public object getOneToMany(string id, Type t)
+        //{
+        //    using (var connection = new SqlConnection(str))
+        //    {
+        //        Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+        //        var filedIdname = GetIdNameField(t);
+        //        connection.Open();
+        //        var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, id);
+        //        var command = new SqlCommand(commandText, connection);
+        //        var reader = command.ExecuteReader();
+
+        //        while (reader.Read())
+        //        {
+        //            var tmpList = new List<object>();
+        //            foreach (var item in dictionary)
+        //            {
+        //                tmpList.Add(reader[item.Key]);                        
+        //            }
+        //            var typeNames = GetTypeOneToMany(t);
+        //            foreach (var name in typeNames)
+        //            {
+        //                Type type = AppDomain.CurrentDomain.GetAssemblies()
+        //                        .SelectMany(x => x.GetTypes())
+        //                        .FirstOrDefault(x => x.Name == name);
+        //                var idValue = tmpList.FirstOrDefault().ToString();
+        //                var foreighkeys = GetForeighKeysList(name);
+        //                var searchRes = "";
+        //                foreach (var item in foreighkeys)
+        //                {
+        //                    if (item.Contains(t.Name))
+        //                    {
+        //                        searchRes = item;
+        //                    }
+        //                }
+        //                var smt = getList(idValue, searchRes, type);
+
+        //                Type listType = typeof(List<>).MakeGenericType(new Type[] { type });
+        //                var listInstance = (IList)Activator.CreateInstance(listType);
+        //                foreach (var item in smt)
+        //                {
+        //                    listInstance.Add(item);
+        //                }
+        //                tmpList.Add(listInstance);
+        //            }
+        //            return Activator.CreateInstance(t, tmpList.ToArray());
+        //        }
+        //        return null;
+        //    }
+        //}
 
         private List<string> GetTypeOneToMany(Type t)
         {
