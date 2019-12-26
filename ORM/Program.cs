@@ -14,6 +14,8 @@ namespace ORM
 
             var tmp3 = rep.GetById("5");
             var tmp = rep.GetTs();
+            tmp3.Age = 55;
+            //rep.Update(tmp3);
         }
     }
 }

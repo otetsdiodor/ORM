@@ -94,7 +94,7 @@ namespace ORM
             var name = TypeFullname.Split('.').LastOrDefault();
             if (IsTableExist(name))
             {
-                Console.WriteLine("TABLE EXISTED");
+                Console.WriteLine("TABLE EXISTED"); 
                 var TableInfo = GetTableInfo(name);
                 var typeInfo = GetTypeInfo(TypeFullname);
                 foreach (var item in TableInfo)

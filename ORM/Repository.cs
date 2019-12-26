@@ -4,7 +4,7 @@ using System.Text;
 
 namespace ORM
 {
-    public class Repository<T>
+    public class Repository<T> : IRepository<T>
     {
         DbContext context = new DbContext();
         public Repository()
