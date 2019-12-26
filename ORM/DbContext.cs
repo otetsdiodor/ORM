@@ -348,9 +348,10 @@ namespace ORM
             }
             return null;
         }
-        public void Update(Type t)
+        public void Update<T>(T t)
         {
-            var typeInfo = GetTypeInfo(t.FullName);
+            var type = typeof(T);
+            var typeInfo = GetTypeInfo(type.FullName);
             var setString = "SET ";
             var count = 0;
             var PropValuesList = TypeValues(t);
@@ -361,7 +362,7 @@ namespace ORM
                 count++;
             }
             setString = setString.Remove(setString.Length - 2);
-            var commandText = string.Format("UPDATE {0} {1} WHERE {2} = '{3}'",t.Name,setString, GetIdNameField(t), PropValuesList[GetIdNameField(t)]);
+            var commandText = string.Format("UPDATE {0} {1} WHERE {2} = '{3}'",type.Name,setString, GetIdNameField(typeof(T)), PropValuesList[GetIdNameField(typeof(T))]);
             using (var connection = new SqlConnection(str))
             {
                 connection.Open();
