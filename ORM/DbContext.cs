@@ -177,14 +177,14 @@ namespace ORM
             using (var connection = new SqlConnection(str))
             {
                 var resultList = new List<object>();
-                LoadedTypes.Add(t.Name);
-                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+                LoadedTypes.Add(TableName);
+                Dictionary<string, string> dictionary = GetTableInfo(TableName);
                 //var filedIdname = GetIdNameField(t);
                 connection.Open();
-                var commandText = string.Format("SELECT * FROM {0};", t.Name); // 
+                var commandText = string.Format("SELECT * FROM {0};", TableName); // 
                 var command = new SqlCommand(commandText, connection);
                 var reader = command.ExecuteReader();
-                var forlist = GetForeighKeysList(t.Name);
+                var forlist = GetForeighKeysList(TableName);
 
                 while (reader.Read())
                 {
@@ -213,7 +213,7 @@ namespace ORM
                         var searchRes = "";
                         foreach (var item in foreighkeys)
                         {
-                            if (item.Contains(t.Name))
+                            if (item.Contains(TableName))
                             {
                                 searchRes = item;
                             }
@@ -236,16 +236,21 @@ namespace ORM
 
         public object GetById(Type t, string id)
         {
+            var TableName = GetTablenameFromAttribute(t);
+            if (TableName == null)
+            {
+                TableName = t.Name;
+            }
             using (var connection = new SqlConnection(str))
             {
-                LoadedTypes.Add(t.Name);
-                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+                LoadedTypes.Add(TableName);
+                Dictionary<string, string> dictionary = GetTableInfo(TableName);
                 var filedIdname = GetIdNameField(t);
                 connection.Open();
-                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, filedIdname, id);
+                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", TableName, filedIdname, id);
                 var command = new SqlCommand(commandText, connection);
                 var reader = command.ExecuteReader();
-                var forlist = GetForeighKeysList(t.Name);
+                var forlist = GetForeighKeysList(TableName);
 
                 while (reader.Read())
                 {
@@ -274,7 +279,7 @@ namespace ORM
                         var searchRes = "";
                         foreach (var item in foreighkeys)
                         {
-                            if (item.Contains(t.Name))
+                            if (item.Contains(TableName))
                             {
                                 searchRes = item;
                             }
@@ -298,14 +303,19 @@ namespace ORM
 
         public List<object> getList(string Id,string IdName, Type t)
         {
+            var TableName = GetTablenameFromAttribute(t);
+            if (TableName == null)
+            {
+                TableName = t.Name;
+            }
             using (var connection = new SqlConnection(str))
             {
-                Dictionary<string, string> dictionary = GetTableInfo(t.Name);
+                Dictionary<string, string> dictionary = GetTableInfo(TableName);
                 connection.Open();
-                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", t.Name, IdName, Id);
+                var commandText = string.Format("SELECT * FROM {0} WHERE {1} = '{2}';", TableName, IdName, Id);
                 var command = new SqlCommand(commandText, connection);
                 var reader = command.ExecuteReader();
-                var foreignKeys = GetForeighKeysList(t.Name); // added
+                var foreignKeys = GetForeighKeysList(TableName); // added
                 List<object> result = new List<object>();
 
                 while (reader.Read())
@@ -433,8 +443,13 @@ namespace ORM
         }
         public void Delete(Type t,string id)
         {
+            var TableName = GetTablenameFromAttribute(t);
+            if (TableName == null)
+            {
+                TableName = t.Name;
+            }
             var idName = GetIdNameField(t);
-            var commText = string.Format("DELETE FROM {0} WHERE {1} = '{2}'", t.Name, idName, id);
+            var commText = string.Format("DELETE FROM {0} WHERE {1} = '{2}'", TableName, idName, id);
             foreach (var item in GetTypeOneToMany(t))
             {
                 Type type2 = AppDomain.CurrentDomain.GetAssemblies()
@@ -464,10 +479,15 @@ namespace ORM
         }
         public void Add(Type type,object o)
         {
+            var TableName = GetTablenameFromAttribute(type);
+            if (TableName == null)
+            {
+                TableName = type.Name;
+            }
             var tmp = TypeValues(type,o);
             var values = "";
-            var tableInfo = GetTableInfo(type.Name);
-            var fk = GetForeighKeysList(type.Name);
+            var tableInfo = GetTableInfo(TableName);
+            var fk = GetForeighKeysList(TableName);
             var om = GetTypeOneToMany(type);
 
             foreach (var item in fk)
@@ -491,7 +511,7 @@ namespace ORM
                 values += $"'{tmp[pair.Key]}',";
             }
             values = values.Remove(values.Length-1);
-            var commandText = string.Format("INSERT INTO {0} VALUES ({1})",type.Name,values);
+            var commandText = string.Format("INSERT INTO {0} VALUES ({1})", TableName, values);
             using (var connection = new SqlConnection(str))
             {
                 connection.Open();
