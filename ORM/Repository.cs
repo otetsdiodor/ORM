@@ -9,7 +9,6 @@ namespace ORM
         DbContext context = new DbContext();
         public Repository()
         {
-            //var tmp= context.GetForeighKeysList();
             if (context.IsValidTypeAndModel(typeof(T).FullName))
             {
                 Console.WriteLine("URAAAAAA");
@@ -32,7 +31,7 @@ namespace ORM
         }
         public void Update(T item)
         {
-            context.Update<T>(item);
+            context.Update(typeof(T),item);
         }
         public void Delete(string id)
         {
@@ -40,7 +39,7 @@ namespace ORM
         }
         public void Add(T item)
         {
-            context.Add(item);
+            context.Add(typeof(T),item);
         }
     }
 }

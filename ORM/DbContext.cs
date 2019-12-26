@@ -19,8 +19,17 @@ namespace ORM
         public DbContext()
         {
             FillMathchedTypes();
+            
         }
-
+        private string GetTablenameFromAttribute(Type t)
+        {
+            object[] attrs = t.GetCustomAttributes(false);
+            foreach (TableAttribute attr in attrs)
+            {
+                return attr.Name;
+            }
+            return null;
+        }
         private bool IsTableExist(string name)
         {
             var list = GetDBTablesList();
@@ -60,6 +69,7 @@ namespace ORM
                         TABLE_NAME,
                         COLUMN_NAME,
                         DATA_TYPE,
+                        IS_NULLABLE,
                         CHARACTER_MAXIMUM_LENGTH
                    FROM INFORMATION_SCHEMA.columns
                    WHERE table_name = '{0}'", TableName);
@@ -75,6 +85,37 @@ namespace ORM
                     cols.Add(colName.ToString(), colType.ToString());
                 }
                 return cols;
+            }
+        }
+        public bool isNullable(string TableName, string colName)
+        {
+            using (var connection = new SqlConnection(str))
+            {
+                connection.Open();
+                var sqlCommand = string.Format(@"SELECT TABLE_CATALOG,
+                        TABLE_SCHEMA,	
+                        TABLE_NAME,
+                        COLUMN_NAME,
+                        DATA_TYPE,
+                        IS_NULLABLE,
+                        CHARACTER_MAXIMUM_LENGTH
+                   FROM INFORMATION_SCHEMA.columns
+                   WHERE table_name = '{0}' and COLUMN_NAME = '{1}'", TableName,colName);
+                var command = new SqlCommand(sqlCommand, connection);
+                var reader = command.ExecuteReader();
+                reader.Close();
+                reader = command.ExecuteReader();
+
+                while (reader.Read())
+                {
+                    object nulable = reader["IS_NULLABLE"];
+                    if (nulable.ToString() == "NO")
+                    {
+                        return false;
+                    }
+                    return true;
+                }
+                return false;
             }
         }
 
@@ -126,41 +167,13 @@ namespace ORM
             MatchedTypes.Add("time", "System.TimeSpan");
         }
 
-        //public IEnumerable<object> GetT(string TableName, Type t)
-        //{
-        //    using (var connection = new SqlConnection(str))
-        //    {
-        //        connection.Open();
-        //        Dictionary<string, string> dictionary = GetTableInfo(TableName);
-        //        List<object> result = new List<object>();
-        //        var commandText = string.Format("SELECT * FROM {0};", TableName);
-        //        var command = new SqlCommand(commandText, connection);
-        //        var reader = command.ExecuteReader();
-        //        var forlist = GetForeighKeysList(TableName);
-        //        while (reader.Read())
-        //        {
-        //            var tmpList = new List<object>();
-        //            foreach (var item in dictionary)
-        //            {
-        //                tmpList.Add(reader[item.Key]);
-        //                if (forlist.Contains(item.Key))
-        //                {
-        //                    Type type = AppDomain.CurrentDomain.GetAssemblies()
-        //                        .SelectMany(x => x.GetTypes())
-        //                        .FirstOrDefault(x => x.Name == item.Key.Replace("Id", ""));
-        //                    object o = GetById(type, tmpList.LastOrDefault().ToString());
-        //                    var index = tmpList.IndexOf(forlist[0]);
-        //                    tmpList.Add(o);
-        //                }
-        //            }
-        //            var tmp = Activator.CreateInstance(t, tmpList.ToArray());
-        //            result.Add(tmp);
-        //        }
-        //        return result;
-        //    }
-        //}
         public List<object> Get(Type t)
         {
+            var TableName = GetTablenameFromAttribute(t);
+            if (TableName == null)
+            {
+                TableName = t.Name;
+            }
             using (var connection = new SqlConnection(str))
             {
                 var resultList = new List<object>();
@@ -348,35 +361,73 @@ namespace ORM
             }
             return null;
         }
-        public void Update<T>(T t)
+        public void Update(Type type,object o)
         {
-            var type = typeof(T);
             var typeInfo = GetTypeInfo(type.FullName);
+            var tabINfo = GetTableInfo(type.Name);
             var setString = "SET ";
             var count = 0;
-            var PropValuesList = TypeValues(t);
+            var PropValuesList = TypeValues(type,o);
             
-            foreach (var item in typeInfo)
+            foreach (var item in tabINfo)
             {
                 setString += $"{item.Key} = '{PropValuesList[item.Key]}', ";
                 count++;
             }
             setString = setString.Remove(setString.Length - 2);
-            var commandText = string.Format("UPDATE {0} {1} WHERE {2} = '{3}'",type.Name,setString, GetIdNameField(typeof(T)), PropValuesList[GetIdNameField(typeof(T))]);
+            var commandText = string.Format("UPDATE {0} {1} WHERE {2} = '{3}'",type.Name,setString, GetIdNameField(type), PropValuesList[GetIdNameField(type)]);
             using (var connection = new SqlConnection(str))
             {
                 connection.Open();
                 var command = new SqlCommand(commandText, connection);
                 command.ExecuteNonQuery();
             }
+            var flag = true;
+            foreach (var item in typeInfo)
+            {
+                foreach (var itm2 in tabINfo)
+                {
+                    if (item.Key == itm2.Key)
+                    {
+                        flag = false;
+                    }
+                }
+                if (flag)
+                {
+                    if (PropValuesList[item.Key] != null)
+                    {
+                        if (item.Value.Contains("List"))
+                        {
+                            foreach (var it in GetTypeOneToMany(type))
+                            {
+                                foreach (var it2 in (IList)PropValuesList[item.Key])
+                                {
+                                    Type type2 = AppDomain.CurrentDomain.GetAssemblies()
+                                        .SelectMany(x => x.GetTypes())
+                                        .FirstOrDefault(x => x.Name == it);
+                                    Update(type2, it2);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            Type type1 = AppDomain.CurrentDomain.GetAssemblies()
+                                    .SelectMany(x => x.GetTypes())
+                                    .FirstOrDefault(x => x.Name == item.Key);
+                            Update(type1, PropValuesList[item.Key]);
+                        }
+                    }                                
+                }
+                flag = true;
+            }
         }
 
-        private Dictionary<string,string> TypeValues<T>(T t)
+        private Dictionary<string,object> TypeValues(Type type,object o)
         {
-            var result = new Dictionary<string, string>();
-            foreach (var item in typeof(T).GetProperties())
+            var result = new Dictionary<string, object>();
+            foreach (var item in type.GetProperties())
             {
-                result.Add(item.Name,item.GetValue(t).ToString());
+                result.Add(item.Name,item.GetValue(o));
             }
             return result;
         }
@@ -384,28 +435,93 @@ namespace ORM
         {
             var idName = GetIdNameField(t);
             var commText = string.Format("DELETE FROM {0} WHERE {1} = '{2}'", t.Name, idName, id);
-            using (var connection = new SqlConnection(str))
+            foreach (var item in GetTypeOneToMany(t))
+            {
+                Type type2 = AppDomain.CurrentDomain.GetAssemblies()
+                                        .SelectMany(x => x.GetTypes())
+                                        .FirstOrDefault(x => x.Name == item);
+                var forKeys = GetForeighKeysList(item);
+                foreach (var key in forKeys)
+                {
+                    if (isNullable(item,key))
+                    {
+                        var commTextUpdate = string.Format("UPDATE {0} SET {1} = NULL",item,key);
+                        using (var connection = new SqlConnection(str))
+                        {
+                            connection.Open();
+                            var command = new SqlCommand(commTextUpdate, connection);
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                }
+            }
+            using (var connection = new SqlConnection(str))                
             {
                 connection.Open();
                 var command = new SqlCommand(commText, connection);
                 command.ExecuteNonQuery();
             }
         }
-        public void Add<T>(T item)
+        public void Add(Type type,object o)
         {
-            var tmp = TypeValues(item);
+            var tmp = TypeValues(type,o);
             var values = "";
-            foreach (var pair in tmp)
+            var tableInfo = GetTableInfo(type.Name);
+            var fk = GetForeighKeysList(type.Name);
+            var om = GetTypeOneToMany(type);
+
+            foreach (var item in fk)
             {
-                values += $"'{pair.Value}',";
+                Type type2 = AppDomain.CurrentDomain.GetAssemblies()
+                                        .SelectMany(x => x.GetTypes())
+                                        .FirstOrDefault(x => x.Name == item.Replace("Id",""));
+                var value = GetById(type2, tmp[item].ToString());
+                if (value == null)
+                {
+                    if(tmp[item.Replace("Id", "")] == null)
+                        throw new Exception("MUST BE NOT NULL");
+                    else
+                    {
+                        Add(type2, tmp[item.Replace("Id", "")]);
+                    }
+                }
+            }          
+            foreach (var pair in tableInfo)
+            {
+                values += $"'{tmp[pair.Key]}',";
             }
             values = values.Remove(values.Length-1);
-            var commandText = string.Format("INSERT INTO {0} VALUES ({1})",typeof(T).Name,values);
+            var commandText = string.Format("INSERT INTO {0} VALUES ({1})",type.Name,values);
             using (var connection = new SqlConnection(str))
             {
                 connection.Open();
                 var command = new SqlCommand(commandText,connection);
                 command.ExecuteNonQuery();
+            }
+            foreach (var item in om)
+            {
+                var id = "";
+                Type type2 = AppDomain.CurrentDomain.GetAssemblies()
+                                        .SelectMany(x => x.GetTypes())
+                                        .FirstOrDefault(x => x.Name == item);
+                foreach (var val in tmp)
+                {
+                    
+                    if (val.Value.GetType().FullName.Contains(type2.Name))
+                    {
+                        foreach (var Nasted in (IList)val.Value)
+                        {
+                            id = TypeValues(type2, Nasted)["Id"].ToString();
+                            var value = GetById(type2, id);
+                            if (value != null)
+                            {
+                                throw new Exception("Must be null");
+                            }
+                            Add(type2, Nasted);
+                        }
+                    }
+                }
+
             }
         }
         private List<string> GetForeighKeysList(string tableName)

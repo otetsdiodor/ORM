@@ -4,6 +4,7 @@ using System.Text;
 
 namespace ORM.Models
 {
+    [Table("CompTabel")]
     class Company
     {
         public int Id { get; set; }
