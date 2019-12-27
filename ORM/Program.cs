@@ -13,8 +13,26 @@ namespace ORM
             var rep = new Repository<Department>();
             var repPers = new Repository<Person>();
             var comrep = new Repository<Company>();
-            var com = new Company(1, "BEST", "BLA BLA BLA LBA");
-            comrep.Add(com);
+
+            var tmp = repPers.GetById("22");
+            var com = comrep.GetById("1");
+            var dep = rep.GetById("6");
+
+            //var tmp = repPers.GetTs();
+            //var com = comrep.GetTs();
+            //var dep = rep.GetTs();
+            tmp.Age = 228;
+            repPers.Update(tmp);
+            com.Devis = "SOME NEW DECVIS";
+            dep.Name = "THE BEST ALO BLET";
+            comrep.Update(com);
+            rep.Update(dep);
+
+
+            var tmp2 = repPers.GetById("22");
+            //var com3 = comrep.GetById("1");
+            //var dep3 = rep.GetById("6");
+
         }
     }
 }
