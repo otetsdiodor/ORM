@@ -21,7 +21,7 @@ namespace ORM
         }
         private string GetTablenameFromAttribute(Type t)
         {
-            object[] attrs = t.GetCustomAttributes(false);
+            object[] attrs = t.GetCustomAttributes(typeof(TableAttribute),false);
             foreach (TableAttribute attr in attrs)
                 return attr.Name;
 
@@ -112,11 +112,12 @@ namespace ORM
         private Dictionary<string, string> GetTypeInfo(string typeFullName)
         {
             var cols = new Dictionary<string, string>();
-            var t = Type.GetType(typeFullName);
+            //var t = Type.GetType(typeFullName);
+            var t = GetTypeByName(typeFullName.Split('.').LastOrDefault());
             foreach (var item in t.GetProperties())
-            {
-                cols.Add(item.Name, item.PropertyType.ToString());
-            }
+                if (item.GetCustomAttribute(typeof(SkipAttribute)) == null)
+                    cols.Add(item.Name, item.PropertyType.ToString());
+
             return cols;
         }
 
@@ -181,11 +182,14 @@ namespace ORM
                     var CtorParams = new List<object>();
                     foreach (var item in TableInfo)
                     {
-                        CtorParams.Add(reader[item.Key]);
+                        if (item.Key == "Descriminator")
+                            t = GetTypeByName(reader[item.Key].ToString());
+                        else
+                            CtorParams.Add(reader[item.Key]);
                         if (GetForeighKeysList(TableName).Contains(item.Key))
                         {
                             var type = GetTypeByName(item.Key.Replace("Id", ""));
-                            var o = GetById(type, CtorParams.LastOrDefault().ToString());
+                            var o = GetById(type, CtorParams.LastOrDefault().ToString(),false);
                             CtorParams.Add(o);
                         }
                     }
@@ -214,7 +218,7 @@ namespace ORM
             }
         }
 
-        public object GetById(Type t, string id)
+        public object GetById(Type t, string id, bool flag = true)
         {
             var TableName = (GetTablenameFromAttribute(t) == null) ? t.Name : GetTablenameFromAttribute(t);
 
@@ -231,30 +235,43 @@ namespace ORM
                     var CtorParams = new List<object>();
                     foreach (var item in TableInfo)
                     {
-                        CtorParams.Add(reader[item.Key]);
+                        if (item.Key == "Descriminator")
+                            t = GetTypeByName(reader[item.Key].ToString());
+                        else
+                            CtorParams.Add(reader[item.Key]);
                         if (GetForeighKeysList(TableName).Contains(item.Key))
-                        {
-                            var type = GetTypeByName(item.Key.Replace("Id", ""));
-                            var o = GetById(type, CtorParams.LastOrDefault().ToString());
-                            CtorParams.Add(o);
-                        }
+                            if (flag)
+                            {
+                                var type = GetTypeByName(item.Key.Replace("Id", ""));
+                                var o = GetById(type, CtorParams.LastOrDefault().ToString(),false);
+                                CtorParams.Add(o);
+                            }
+                            else
+                                CtorParams.Add(null);
                     }
+
                     foreach (var TypeName in GetTypeOneToMany(t))
                     {
-                        var type = GetTypeByName(TypeName);
-                        var searchRes = "";
+                        if (flag)
+                        {
+                            var type = GetTypeByName(TypeName);
+                            var smt = (GetTablenameFromAttribute(type) == null) ? type.Name : GetTablenameFromAttribute(type);
+                            var searchRes = "";
 
-                        foreach (var item in GetForeighKeysList(TypeName))
-                            if (item.Contains(TableName))
-                                searchRes = item;
+                            foreach (var item in GetForeighKeysList(smt))
+                                if (item.Contains(TableName))
+                                    searchRes = item;
 
-                        var listOfType = getList(CtorParams.FirstOrDefault().ToString(), searchRes, type);
+                            var listOfType = getList(CtorParams.FirstOrDefault().ToString(), searchRes, type,false);
 
-                        var listInstance = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(new Type[] { type }));
-                        foreach (var item in listOfType)
-                            listInstance.Add(item);
+                            var listInstance = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(new Type[] { type }));
+                            foreach (var item in listOfType)
+                                listInstance.Add(item);
 
-                        CtorParams.Add(listInstance);
+                            CtorParams.Add(listInstance);
+                        }
+                        else
+                            CtorParams.Add(null);
                     }
                     return Activator.CreateInstance(t, CtorParams.ToArray());
                 }
@@ -262,7 +279,7 @@ namespace ORM
             }
         }
 
-        public List<object> getList(string Id,string IdName, Type t)
+        public List<object> getList(string Id,string IdName, Type t,bool flag = true)
         {
             var TableName = (GetTablenameFromAttribute(t) == null) ? t.Name : GetTablenameFromAttribute(t); 
 
@@ -279,16 +296,24 @@ namespace ORM
                     var CtorParams = new List<object>();
                     foreach (var item in TableInfo)
                     {
-                        CtorParams.Add(reader[item.Key]);
+                        if (item.Key == "Descriminator")
+                            t = GetTypeByName(reader[item.Key].ToString());
+                        else
+                            CtorParams.Add(reader[item.Key]);
                         if (GetForeighKeysList(TableName).Contains(item.Key))
-                            if (LoadedTypes.Contains(item.Key.Replace("Id", "")))
-                                CtorParams.Add(null);
-                            else
+                            if(flag)
                             {
-                                var type = GetTypeByName(item.Key.Replace("Id", ""));
-                                var o = GetById(type, CtorParams.LastOrDefault().ToString());
-                                CtorParams.Add(o);
+                                if (LoadedTypes.Contains(item.Key.Replace("Id", "")))
+                                    CtorParams.Add(null);
+                                else
+                                {
+                                    var type = GetTypeByName(item.Key.Replace("Id", ""));
+                                    var o = GetById(type, CtorParams.LastOrDefault().ToString(), false);
+                                    CtorParams.Add(o);
+                                }
                             }
+                        else
+                                CtorParams.Add(null);
                     }
                     result.Add(Activator.CreateInstance(t, CtorParams.ToArray()));
                 }
@@ -300,7 +325,7 @@ namespace ORM
         {
             var result = new List<string>();
             foreach (var item in t.GetProperties())
-                if (item.PropertyType.FullName.Contains("List"))
+                if (item.PropertyType.FullName.Contains("List") && item.GetCustomAttribute(typeof(SkipAttribute)) == null)
                     result.Add(item.PropertyType.GenericTypeArguments.First().Name);
 
             return result;
@@ -316,18 +341,22 @@ namespace ORM
             return null;
         }
 
-        public void Update(Type type, object o,bool fl = true)
+        public void Update(object o,bool fl = true)
         {
+            var type = o.GetType();
             var TableName = (GetTablenameFromAttribute(type) == null) ?  type.Name : GetTablenameFromAttribute(type);
 
             var tabINfo = GetTableInfo(TableName);
             var setString = "SET ";
             var count = 0;
-            var PropValuesList = TypeValues(type, o);
+            var PropValuesList = TypeValues(o);
 
             foreach (var item in tabINfo)
             {
-                setString += $"{item.Key} = '{PropValuesList[item.Key]}', ";
+                if(item.Key == "Descriminator")
+                    setString += $"{item.Key} = '{type.Name}', ";
+                else
+                    setString += $"{item.Key} = '{PropValuesList[item.Key]}', ";
                 count++;
             }
             setString = setString.Remove(setString.Length - 2);
@@ -339,37 +368,68 @@ namespace ORM
                 command.ExecuteNonQuery();
             }
             var flag = true;
-            foreach (var item in GetTypeInfo(type.FullName))
+            var listLoaded = new List<string>();
+            if(fl)
             {
-                foreach (var itm2 in tabINfo)
-                    if (item.Key == itm2.Key)
-                        flag = false;
+                foreach (var item in GetTypeInfo(type.FullName))
+                {
+                    foreach (var itm2 in tabINfo)
+                        if (item.Key == itm2.Key)
+                            flag = false;
 
-                if (flag && PropValuesList[item.Key] != null && fl)
-                    if (item.Value.Contains("List"))
-                        foreach (var it in GetTypeOneToMany(type))
+                    if (flag && PropValuesList[item.Key] != null)
+                        if (item.Value.Contains("List"))
+                        {
+                            var tmp = PropValuesList[item.Key].GetType();
+                            var it = getsmt(GetTypeOneToMany(type),tmp);
                             foreach (var it2 in (IList)PropValuesList[item.Key])
-                                Update(GetTypeByName(it), it2);
-                    else
-                        Update(GetTypeByName(item.Key), PropValuesList[item.Key],false);
+                            {
+                                var tmp2 = it2.GetType();
+                                var valTmp = TypeValues(it2);
+                                if (GetById(GetTypeByName(it), valTmp["Id"].ToString()) == null)
+                                {
+                                    Add(it2);
+                                }
+                                else
+                                    Update(it2, false);
+                            }
+                               
+                        }
+                        else
+                            Update(PropValuesList[item.Key], false);
 
-                flag = true;
-            }
+                    flag = true;
+                }
+            }            
         }
-
-        private Dictionary<string,object> TypeValues(Type type,object o)
+        public string getsmt(List<string> list,Type type)
         {
+            foreach (var item in list)
+            {
+                if (type.FullName.Contains(item))
+                {
+                    return item;
+                }
+            }
+            return null;
+        }
+        private Dictionary<string,object> TypeValues(object o)
+        {
+            var type = o.GetType();
             var result = new Dictionary<string, object>();
             foreach (var item in type.GetProperties())
-                result.Add(item.Name,item.GetValue(o));
+                if (item.GetCustomAttribute(typeof(SkipAttribute)) == null)
+                    result.Add(item.Name,item.GetValue(o));
 
             return result;
         }
-        public void Delete(Type t,string id)
+        public void Delete(Type t,string id,string idName = null)
         {
             var TableName = (GetTablenameFromAttribute(t) == null) ? t.Name : GetTablenameFromAttribute(t);
-
-            var idName = GetIdNameField(t);
+            if (idName == null)
+            {
+                idName = GetIdNameField(t);
+            }
             var commText = string.Format("DELETE FROM {0} WHERE {1} = '{2}'", TableName, idName, id);
             foreach (var item in GetTypeOneToMany(t))
                 foreach (var key in GetForeighKeysList(item))
@@ -386,15 +446,34 @@ namespace ORM
 
             using (var connection = new SqlConnection(str))                
             {
-                connection.Open();
-                var command = new SqlCommand(commText, connection);
-                command.ExecuteNonQuery();
+                try
+                {
+                    connection.Open();
+                    var command = new SqlCommand(commText, connection);
+                    command.ExecuteNonQuery();
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.Message);
+                    var lol = e.Message.Split("dbo.")[1].Split('"')[0]; 
+                    var kek = GetForeighKeysList(lol);
+                    foreach (var item in kek)
+                    {
+                        if (item.Contains(TableName))
+                        {
+                            var type = GetTypeByName(lol);
+                            Delete(type,id,item);
+                        }
+                    }
+                    Delete(t, id);
+                }               
             }
         }
-        public void Add(Type type,object o)
+        public void Add(object o)
         {
+            var type = o.GetType();
             var TableName = (GetTablenameFromAttribute(type) == null) ? type.Name : GetTablenameFromAttribute(type);
-            var ValuesOfType = TypeValues(type,o);
+            var ValuesOfType = TypeValues(o);
             var values = "";
 
             foreach (var item in GetForeighKeysList(TableName))
@@ -402,13 +481,24 @@ namespace ORM
                 var type2 = GetTypeByName(item.Replace("Id", ""));
                 if (GetById(type2, ValuesOfType[item].ToString()) == null)
                     if(ValuesOfType[item.Replace("Id", "")] == null)
-                        throw new Exception("MUST BE NOT NULL");
+                        /*throw new Exception("MUST BE NOT NULL")*/
+                        Console.WriteLine("HIIIIIII");
                     else
-                        Add(type2, ValuesOfType[item.Replace("Id", "")]);
+                    {
+                        //var lol = ValuesOfType[item.Replace("Id", "")].GetType();
+                        Add(ValuesOfType[item.Replace("Id", "")]);
+                    }
             }         
             
             foreach (var pair in GetTableInfo(TableName))
-                values += $"'{ValuesOfType[pair.Key]}',";
+            {
+                if (pair.Key == "Descriminator")
+                    values += $"'{type.Name}',";
+                else
+                    values += $"'{ValuesOfType[pair.Key]}',";
+            }
+
+                
             values = values.Remove(values.Length-1);
 
             var commandText = string.Format("INSERT INTO {0} VALUES ({1})", TableName, values);
@@ -425,9 +515,9 @@ namespace ORM
                     if (val.Value.GetType().FullName.Contains(type2.Name))
                         foreach (var Nasted in (IList)val.Value)
                         {
-                            if (GetById(type2, TypeValues(type2, Nasted)["Id"].ToString()) != null)
-                                throw new Exception("Must be null");
-                            Add(type2, Nasted);
+                            if (GetById(type2, TypeValues(Nasted)["Id"].ToString()) == null)
+                                //throw new Exception("Must be null");
+                            Add(Nasted);
                         }
             }
         }

@@ -31,7 +31,7 @@ namespace ORM
         }
         public void Update(T item)
         {
-            context.Update(typeof(T),item);
+            context.Update(item);
         }
         public void Delete(string id)
         {
@@ -39,7 +39,7 @@ namespace ORM
         }
         public void Add(T item)
         {
-            context.Add(typeof(T),item);
+            context.Add(item);
         }
     }
 }
